@@ -1,0 +1,5 @@
+*.vvp
+_sim
+_synth
+*.vcd
+

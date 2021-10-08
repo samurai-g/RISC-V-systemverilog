@@ -1,0 +1,10 @@
+*.vvp
+__pycache__
+*.pyc
+*.bak
+_sim
+_synth
+_work
+*.vcd
+output*.txt
+
