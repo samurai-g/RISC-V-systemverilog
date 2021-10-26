@@ -110,25 +110,6 @@ module DIG_Sub #(
     assign c_o = temp[Bits];
 endmodule
 
-module DIG_Add
-#(
-    parameter Bits = 1
-)
-(
-    input [(Bits-1):0] a,
-    input [(Bits-1):0] b,
-    input c_i,
-    output [(Bits - 1):0] s,
-    output c_o
-);
-   wire [Bits:0] temp;
-
-   assign temp = a + b + c_i;
-   assign s = temp [(Bits-1):0];
-   assign c_o = temp[Bits];
-endmodule
-
-
 
 module Mux_2x1_NBits #(
     parameter Bits = 2
@@ -148,6 +129,25 @@ module Mux_2x1_NBits #(
         endcase
     end
 endmodule
+
+module DIG_Add
+#(
+    parameter Bits = 1
+)
+(
+    input [(Bits-1):0] a,
+    input [(Bits-1):0] b,
+    input c_i,
+    output [(Bits - 1):0] s,
+    output c_o
+);
+   wire [Bits:0] temp;
+
+   assign temp = a + b + c_i;
+   assign s = temp [(Bits-1):0];
+   assign c_o = temp[Bits];
+endmodule
+
 
 
 module divider (
@@ -172,13 +172,14 @@ module divider (
   wire [3:0] s9;
   wire [3:0] s10;
   wire s11;
-  wire s12;
   wire [4:0] quotient_o_temp;
+  wire [4:0] s12;
   wire [4:0] s13;
   wire [4:0] s14;
   wire s15;
   wire s16;
   wire [4:0] s17;
+  wire s18;
   // div != 0
   CompUnsigned #(
     .Bits(4)
@@ -189,7 +190,7 @@ module divider (
     .\= ( s11 )
   );
   assign s2 = ~ s11;
-  assign s12 = (~ s2 & start_i);
+  assign s18 = ~ (~ s2 & start_i);
   ns_logic ns_logic_i1 (
     .Q0( s0 ),
     .Q_1( s1 ),
@@ -250,11 +251,11 @@ module divider (
     .Default(0)
   )
   DIG_D_FF_AS_Nbit_i6 (
-    .Set( s12 ),
+    .Set( 1'b0 ),
     .D( quotient_o_temp ),
     .C( clk_i ),
     .Clr( reset_i ),
-    .Q( s13 )
+    .Q( s12 )
   );
   // sub >= div
   CompUnsigned #(
@@ -266,6 +267,15 @@ module divider (
     .\> ( s15 ),
     .\= ( s16 )
   );
+  Mux_2x1_NBits #(
+    .Bits(5)
+  )
+  Mux_2x1_NBits_i8 (
+    .sel( s18 ),
+    .in_0( 5'b11111 ),
+    .in_1( s12 ),
+    .out( s14 )
+  );
   assign s6[0] = s5;
   assign s6[1] = s4;
   assign s3 = (s15 | s16);
@@ -273,8 +283,8 @@ module divider (
   DIG_Add #(
     .Bits(5)
   )
-  DIG_Add_i8 (
-    .a( s13 ),
+  DIG_Add_i9 (
+    .a( s12 ),
     .b( 5'b1 ),
     .c_i( 1'b0 ),
     .s( s17 )
@@ -286,20 +296,20 @@ module divider (
   Mux_2x1_NBits #(
     .Bits(5)
   )
-  Mux_2x1_NBits_i9 (
+  Mux_2x1_NBits_i10 (
     .sel( s3 ),
-    .in_0( s13 ),
+    .in_0( s12 ),
     .in_1( s17 ),
-    .out( s14 )
+    .out( s13 )
   );
   Mux_4x1_NBits #(
     .Bits(5)
   )
-  Mux_4x1_NBits_i10 (
+  Mux_4x1_NBits_i11 (
     .sel( s7 ),
     .in_0( 5'b0 ),
-    .in_1( s14 ),
-    .in_2( s13 ),
+    .in_1( s13 ),
+    .in_2( s14 ),
     .in_3( 5'b0 ),
     .out( quotient_o_temp )
   );
