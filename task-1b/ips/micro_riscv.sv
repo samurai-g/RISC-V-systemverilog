@@ -16,6 +16,7 @@ module micro_riscv(
 
   output logic        cpu_finish_o
 );
+
   // Stop the testbench if we reach an illegal instruction or we finish the CPU via EBREAK
   logic illegal_insn, cpu_halt;
   assign cpu_finish_o = illegal_insn | cpu_halt;
@@ -26,6 +27,7 @@ module micro_riscv(
   logic [31:0] PC_p, PC_n; // Program Counter
   logic [31:0] PC_incr;
   logic PC_src;
+  logic PC_stall;
 
   // Next program counter
   assign PC_incr = PC_p + 4;
@@ -37,6 +39,9 @@ module micro_riscv(
       2'b01: PC_n = PC_alu;
       2'b00: PC_n = PC_incr;
     endcase
+    if (PC_stall == 1'b1) begin
+      PC_n = PC_p;
+    end
   end
   // Redirect PC to the instruction memory interface
   assign cpu_instr_addr_o = PC_p;
@@ -109,6 +114,21 @@ module micro_riscv(
     .write_data_i  (reg_write_data)
   );
 
+logic busy_o, finish_o, start_i;
+logic [8:0] quotient_o;
+
+  divider divider_i (
+    .clk_i (clk_i),
+    .reset_i (reset_i),
+    .dividend_i (reg_data_1[7:0]),
+    .divisor_i (reg_data_2[7:0]),
+    .start_i (start_i),
+    .busy_o (busy_o),
+    .finish_o (finish_o),
+    .quotient_o (quotient_o)
+  );
+
+
   logic alu_src, alu_is_branch, alu_is_jump, alu_mem_write, alu_mem_read,
         mem_to_reg, alu_pc_reg_src;
   imm_t imm_sel;
@@ -131,6 +151,8 @@ module micro_riscv(
     cpu_halt       = 1'b0;
     rs1_valid      = 1'b0;
     rs2_valid      = 1'b0;
+    start_i        = 1'b0;
+    PC_stall       = 1'b0;
 
     case(opcode)
       OPC_JAL: begin
@@ -209,6 +231,13 @@ module micro_riscv(
           {7'b000_0000, F3_SLL}: alu_operator = ALU_SLL;   // Shift Left Logical
           {7'b000_0000, F3_SRL}: alu_operator = ALU_SRL;   // Shift Right Logical
           {7'b010_0000, F3_SRL}: alu_operator = ALU_SRA;   // Shift Right
+          {7'b000_0001, 3'b101}: begin                     // Divison
+            start_i = 1'b1;
+            PC_stall = 1'b1;
+              if (finish_o == 1'b1) begin
+                PC_stall = 1'b0;
+              end
+            end
           default:               illegal_insn = 1'b1;
         endcase
       end
@@ -306,5 +335,13 @@ module micro_riscv(
       2'b0?: reg_write_data = alu_result;
       2'b1?: reg_write_data = cpu_data_rdata_i;
     endcase
+    //write back data from divider with sign extension
+    if (opcode == OPC_ALSU && funct7 == 7'b000_0001 && funct3 == 3'b101) begin
+      reg_write_data = {23'b0, quotient_o};
+    end
+    //write back -1 if divider is 511
+    if (opcode == OPC_ALSU && funct7 == 7'b000_0001 && funct3 == 3'b101 && quotient_o == 'h000001ff ) begin
+    reg_write_data = {32'hffffffff};
+    end
   end
 endmodule
