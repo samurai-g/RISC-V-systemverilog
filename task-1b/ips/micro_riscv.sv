@@ -153,6 +153,7 @@ logic [8:0] quotient_o;
     rs2_valid      = 1'b0;
     start_i        = 1'b0;
     PC_stall       = 1'b0;
+    reg_write_data = alu_result;
 
     case(opcode)
       OPC_JAL: begin
@@ -236,8 +237,12 @@ logic [8:0] quotient_o;
             PC_stall = 1'b1;
               if (finish_o == 1'b1) begin
                 PC_stall = 1'b0;
+                reg_write_data = {23'b0, quotient_o};
+                if (quotient_o == 'h000001ff ) begin
+                  reg_write_data = {32'hffffffff};
               end
             end
+          end
           default:               illegal_insn = 1'b1;
         endcase
       end
@@ -335,13 +340,5 @@ logic [8:0] quotient_o;
       2'b0?: reg_write_data = alu_result;
       2'b1?: reg_write_data = cpu_data_rdata_i;
     endcase
-    //write back data from divider with sign extension
-    if (opcode == OPC_ALSU && funct7 == 7'b000_0001 && funct3 == 3'b101) begin
-      reg_write_data = {23'b0, quotient_o};
-    end
-    //write back -1 if divider is 511
-    if (opcode == OPC_ALSU && funct7 == 7'b000_0001 && funct3 == 3'b101 && quotient_o == 'h000001ff ) begin
-    reg_write_data = {32'hffffffff};
-    end
   end
 endmodule
