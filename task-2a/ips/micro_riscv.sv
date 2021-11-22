@@ -24,7 +24,7 @@ module micro_riscv(
   logic illegal_insn, illegal_insn_n, illegal_insn_p;
   logic cpu_halt_n, cpu_halt_p;
 
-  assign cpu_finish_o = cpu_halt_p;
+  assign cpu_finish_o = cpu_halt_ex_p;
 
   //##################################################################################################
   // Instruction Fetch
@@ -63,12 +63,12 @@ module micro_riscv(
 
   logic [31:0] PC_if_p, PC_if_n; // IF Program Counter
   logic [31:0] Instruction_if_p, Instruction_if_n; // IF Instruction Register
-  logic nop_if_n, nop_if_p; //pipelined ‘no-operation’ signal
+  //logic nop_if_n, nop_if_p; //pipelined ‘no-operation’ signal
   
   // Wire PC to IF PC
   assign PC_if_n = PC_p;
 
-  // PC register - just take PC from register
+  // IF/ID PC register - just take PC from register
   always_ff @(posedge clk_i or posedge reset_i) begin
     if (reset_i) begin
       PC_if_p <= 32'b0;
@@ -77,7 +77,7 @@ module micro_riscv(
     end
   end
 
-  // Control Flow Hazard (NOP in if/id stage)
+  // Control Flow Hazard (NOP the if/id stage)
   always_comb begin
     Instruction_if_n = cpu_instr_rdata_i;
     if (PC_src == 1'b1) begin
@@ -98,16 +98,12 @@ module micro_riscv(
   // ID/EX STAGE
   
   logic [31:0] PC_id_p, PC_id_n; // ID Program Counter
-  //logic [31:0] PC_id_incr;
   //logic nop_id_n, nop_id_p;
 
-  //connect pc registers
+  //Wire IF PC to ID PC
   assign  PC_id_n = PC_if_p;
-  
-  // ID_PC + 4
-  //assign PC_id_incr = PC_id_p + 4;
 
-  //PC register - just take PC from IF/ID register
+  //ID/EX PC register - just take PC from IF/ID register
   always_ff @(posedge clk_i or posedge reset_i) begin
     if (reset_i) begin
       PC_id_p <= 32'b0;
@@ -178,7 +174,7 @@ module micro_riscv(
     end
   end
 
-  //Mux for reg_data_1
+  //Mux IF/EX for reg_data_1
   always_comb begin
     reg_data_1_n = reg_data_1;
     case({forward_reg_1})
@@ -187,7 +183,7 @@ module micro_riscv(
     endcase
   end
 
-  //Mux for reg_data_2
+  //Mux IF/EX for reg_data_2
   always_comb begin
   reg_data_2_n = reg_data_2;
     case({forward_reg_2})
