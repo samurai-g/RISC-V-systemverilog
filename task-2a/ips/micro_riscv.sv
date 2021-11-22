@@ -1,7 +1,7 @@
 `include "defines.vh"
 import cpu_pkg::*;
 
-//AKTUELLE VERSION 21.11 18:51
+//Work-in-progress VERSION 22.11 11_46
 
 module micro_riscv(
   input logic         clk_i,
@@ -36,11 +36,12 @@ module micro_riscv(
   // Next program counter
   assign PC_incr = PC_p + 4;
 
+  // PC mux
   always_comb begin
     PC_n = PC_p;
-    casez({cpu_halt_p, PC_src})
+    casez({cpu_halt_ex_p, PC_src})
       2'b1?: PC_n = PC_p;
-      2'b01: PC_n = PC_alu;
+      2'b01: PC_n = PC_alu_p;
       2'b00: PC_n = PC_incr;
     endcase
   end
@@ -57,6 +58,7 @@ module micro_riscv(
     end
   end
 
+  //-----------------------------------------------------------------
   // IF/ID STAGE PIPELINE
 
   logic [31:0] PC_if_p, PC_if_n; // IF Program Counter
@@ -83,15 +85,6 @@ module micro_riscv(
     end
   end
 
-  // Nop register - save IF_nop flag if nop instruction
-  //always_ff @(posedge clk_i or posedge reset_i) begin
-  //  if (reset_i) begin
-  //    nop_if_p <= 32'b0;
-  //  end else begin
-  //    nop_if_p <= nop_if_n;
-  //  end
-  //end
-
   // Instruction register - save current instruction
   always_ff @(posedge clk_i or posedge reset_i) begin
     if (reset_i) begin
@@ -101,19 +94,18 @@ module micro_riscv(
     end
   end
 
-  //-------------------------------------------
+  //--------------------------------------------------------
   // ID/EX STAGE
   
   logic [31:0] PC_id_p, PC_id_n; // ID Program Counter
-  logic [31:0] PC_id_incr;
-  logic nop_id_n, nop_id_p;
+  //logic [31:0] PC_id_incr;
+  //logic nop_id_n, nop_id_p;
 
-  //connect pc and nop registers
+  //connect pc registers
   assign  PC_id_n = PC_if_p;
-  assign  nop_id_n = nop_if_p;
   
   // ID_PC + 4
-  assign PC_id_incr = PC_id_p + 4;
+  //assign PC_id_incr = PC_id_p + 4;
 
   //PC register - just take PC from IF/ID register
   always_ff @(posedge clk_i or posedge reset_i) begin
@@ -124,20 +116,10 @@ module micro_riscv(
     end
   end
 
-  //nop register - just take PC from IF/ID register
-  always_ff @(posedge clk_i or posedge reset_i) begin
-    if (reset_i) begin
-      nop_id_p <= 32'b0;
-    end else begin
-      nop_id_p <= nop_id_n;
-    end
-  end
-
   // ID/EX (Decode/Execution) register
   always_ff @(posedge clk_i or posedge reset_i) begin
     if (reset_i) begin
       alu_operator_p   <= 1'b0;
-      imm_sel_p        <= 1'b0;
       alu_src_p        <= 1'b0;
       alu_is_branch_p  <= 1'b0;
       alu_is_jump_p    <= 1'b0;
@@ -148,9 +130,10 @@ module micro_riscv(
       alu_pc_reg_src_p <= 1'b0;
       illegal_insn_p   <= 1'b0;
       cpu_halt_p       <= 1'b0;
+      rd_p             <= 1'b0;
+      alu_imm_p        <= 1'b0;
     end else begin
-       alu_operator_p   <=  alu_operator_n;
-       imm_sel_p        <=  imm_sel_n;      
+       alu_operator_p   <=  alu_operator_n;     
        alu_src_p        <=  alu_src_n;       
        alu_is_branch_p  <=  alu_is_branch_n;
        alu_is_jump_p    <=  alu_is_jump_n;   
@@ -175,41 +158,195 @@ module micro_riscv(
       reg_data_1_p     <= reg_data_1_n;
       reg_data_2_p     <= reg_data_2_n;     
     end 
+  end 
+
+  logic forward_reg_1, forward_reg_2;
+
+  // IF/EX FORWARD LOGIC
+  
+  always_comb begin
+    forward_reg_1 = 1'b0;
+    if (rd_ex_p != 32'b0 && alu_reg_write_ex_p != 0 && (rd_ex_p == rs1))begin
+      forward_reg_1 = 1'b1;
+    end
+  end
+  
+  always_comb begin
+    forward_reg_2 = 1'b0;
+    if (rd_ex_p != 32'b0 && alu_reg_write_ex_p != 0 && (rd_ex_p == rs2))begin
+      forward_reg_2 = 1'b1;
+    end
   end
 
-  //assign reg_data_1_n = reg_data_1;
-  //assign reg_data_2_n = reg_data_2;
-
-  logic forward_log;
-  logic test1, test2, test3;
-
-  //FORWARD LOGIC
+  //Mux for reg_data_1
   always_comb begin
-    test1 = 1'b0;
-    if (rd_p == rs1)
-      test1 = 1'b1;
+    reg_data_1_n = reg_data_1;
+    case({forward_reg_1})
+      1'b0: reg_data_1_n = reg_data_1;
+      1'b1: reg_data_1_n = reg_write_data;
+    endcase
   end
 
+  //Mux for reg_data_2
   always_comb begin
-    test2 = 1'b0;
-    if (reg_write_data != 32'b0)
-      test2 = 1'b1;
+  reg_data_2_n = reg_data_2;
+    case({forward_reg_2})
+      1'b0: reg_data_2_n = reg_data_2;
+      1'b1: reg_data_2_n = reg_write_data;
+    endcase
   end
 
+  //----------------------------------------------------
+  // EX/WB stage
+  
+  logic alu_reg_write_ex_n, alu_reg_write_ex_p;
+  logic cpu_halt_ex_n, cpu_halt_ex_p;
+  logic mem_to_reg_ex_n, mem_to_reg_ex_p;
+  logic alu_mem_read_ex_n, alu_mem_read_ex_p;
+  logic alu_mem_write_ex_n, alu_mem_write_ex_p;
+  logic alu_is_jump_ex_n, alu_is_jump_ex_p;
+  logic alu_is_branch_ex_n, alu_is_branch_ex_p;
+  
+  // EX/WB register for remaining decode and control signals
+  always_ff @(posedge clk_i or posedge reset_i) begin
+    if (reset_i) begin
+      alu_is_branch_ex_p  <= 1'b0;
+      alu_is_jump_ex_p    <= 1'b0;
+      alu_mem_read_ex_p   <= 1'b0;
+      alu_mem_write_ex_p  <= 1'b0;
+      alu_reg_write_ex_n  <= 1'b0;
+      mem_to_reg_ex_p     <= 1'b0;
+      cpu_halt_ex_p       <= 1'b0;
+    end else begin       
+      alu_is_branch_ex_p  <=  alu_is_branch_ex_n;
+      alu_is_jump_ex_p    <=  alu_is_jump_ex_n;   
+      alu_mem_read_ex_p   <=  alu_mem_read_ex_n;  
+      alu_mem_write_ex_p  <=  alu_mem_write_ex_n; 
+      alu_reg_write_ex_p  <=  alu_reg_write_ex_n;
+      mem_to_reg_ex_p     <=  mem_to_reg_ex_n;    
+      cpu_halt_ex_p       <=  cpu_halt_ex_n;          
+    end
+  end
+  
+  logic [31:0] PC_alu_n, PC_alu_p;
+  logic alu_branch_o_n, alu_branch_o_p;
+  logic signed [31:0] alu_result_n, alu_result_p;
+  
+  // EX/WB alu register 
+  always_ff @(posedge clk_i or posedge reset_i) begin
+    if (reset_i) begin
+      PC_alu_p  <= 32'b0;
+      alu_branch_o_p <= 1'b0;
+      alu_result_p <= 32'b0;
+    end else begin       
+      PC_alu_p  <=  PC_alu_n;
+      alu_branch_o_p <= alu_branch_o_n;
+      alu_result_p <= alu_result_n;
+    end
+  end
+
+  logic [4:0] rd_ex_n, rd_ex_p;
+  logic [31:0] PC_ex_p, PC_ex_n; // ID Program Counter
+  logic [31:0] PC_ex_incr;
+
+  logic [31:0] reg_data_1_ex;
+  logic [31:0] reg_data_2_ex_n, reg_data_2_ex_p;
+
+  assign rd_ex_n = rd_p;
+  assign PC_ex_n = PC_id_p;
+
+  // PC_ex + 4
+ assign PC_ex_incr = PC_ex_p + 4;
+
+  // EX/WB rd & PC & reg_data register
+  always_ff @(posedge clk_i or posedge reset_i) begin
+    if (reset_i) begin
+      rd_ex_p  <= 5'b0;
+      PC_ex_p  <= 32'b0;
+      reg_data_2_ex_p <= 32'b0;
+    end else begin       
+      rd_ex_p  <=  rd_ex_n;
+      PC_ex_p  <=  PC_ex_n;
+      reg_data_2_ex_p <= reg_data_2_ex_n;
+    end
+  end
+
+  logic forward_reg_ex_1, forward_reg_ex_2;
+
+  logic [4:0]  rs1_ex_n, rs1_ex_p;
+  logic [4:0]  rs2_ex_n, rs2_ex_p;
+
+  assign rs1_ex_n = rs1;
+  assign rs2_ex_n = rs2;
+
+  // EX/WB rs1 and rs2 register
+  always_ff @(posedge clk_i or posedge reset_i) begin
+    if (reset_i) begin
+      rs1_ex_p  <= 5'b0;
+      rs2_ex_p  <= 5'b0;
+    end else begin       
+      rs1_ex_p <= rs1_ex_n;
+      rs2_ex_p <= rs2_ex_n;
+    end
+  end
+
+  // EX/WB FORWARD LOGIC
   always_comb begin
-   test3 = 1'b0;
-   if (rd_p != 32'b0)
-     test3 = 1'b1;
- end
+    forward_reg_ex_1 = 1'b0;
+    if (rd_ex_p != 32'b0 && alu_reg_write_ex_p != 0 && (rd_ex_p == rs1_ex_p))begin
+      forward_reg_ex_1 = 1'b1;
+    end
+  end
+  
+  always_comb begin
+    forward_reg_ex_2 = 1'b0;
+    if (rd_ex_p != 32'b0 && alu_reg_write_ex_p != 0 && (rd_ex_p == rs2_ex_p))begin
+      forward_reg_ex_2 = 1'b1;
+    end
+  end
 
-  //For reg_data_1
-  //always_comb begin
-  //  case({forward_log})
-  //    1'b1: reg_data_1_n = reg_data_1;
-  //    1'b0: reg_data_1_n = reg_write_data;
-  //  endcase
-  //end
+  //Mux for EX/WB reg_data_1
+  always_comb begin
+    reg_data_1_ex = reg_data_1_p;
+    case({forward_reg_ex_1})
+      1'b0: reg_data_1_ex = reg_data_1_p;
+      1'b1: reg_data_1_ex = reg_write_data;
+    endcase
+  end
 
+  //Mux for EX/WB reg_data_2
+  always_comb begin
+  reg_data_2_ex_n = reg_data_2_p;
+    case({forward_reg_ex_2})
+      1'b0: reg_data_2_ex_n = reg_data_2_p;
+      1'b1: reg_data_2_ex_n = reg_write_data;
+    endcase
+  end
+
+  //Flush (set) all control signals when PC_src = 1
+  always_comb begin 
+    alu_reg_write_ex_n = alu_reg_write_p;
+    cpu_halt_ex_n = cpu_halt_p;
+    mem_to_reg_ex_n = mem_to_reg_p;
+    alu_mem_read_ex_n = alu_mem_read_p;
+    alu_mem_write_ex_n = alu_mem_write_p;
+    alu_is_jump_ex_n = alu_is_jump_p;
+    alu_is_branch_ex_n = alu_is_branch_p;
+
+    alu_branch_o_n = alu_branch_o;
+
+    if (PC_src) begin
+      alu_is_branch_ex_n  = 1'b0;
+      alu_is_jump_ex_n    = 1'b0;
+      alu_mem_write_ex_n  = 1'b0;
+      alu_mem_read_ex_n   = 1'b0;
+      mem_to_reg_ex_n     = 1'b0;
+      cpu_halt_ex_n       = 1'b0;
+      alu_reg_write_ex_n  = 1'b0;
+      
+      alu_branch_o_n      = 1'b0;
+    end 
+  end
 
 
   //##################################################################################################
@@ -270,8 +407,8 @@ module micro_riscv(
     .read_data_1_o (reg_data_1),
     .read_reg_2_i  (rs2),
     .read_data_2_o (reg_data_2),
-    .write_i       (alu_reg_write_p),
-    .write_reg_i   (rd_p),
+    .write_i       (alu_reg_write_ex_p),
+    .write_reg_i   (rd_ex_p),
     .write_data_i  (reg_write_data)
   );
 
@@ -282,13 +419,9 @@ module micro_riscv(
   logic alu_mem_write_n,  alu_mem_write_p;
   logic alu_mem_read_n,   alu_mem_read_p;
   logic mem_to_reg_n,     mem_to_reg_p;
-  logic alu_pc_reg_src_n, alu_pc_reg_src_p; 
+  logic alu_pc_reg_src_n, alu_pc_reg_src_p;
 
-  //Assign to *decode*_n to avoid rewriting decode
-  //assign alu_pc_reg_src_n = alu_pc_reg_src ;
-  
-
-  imm_t imm_sel, imm_sel_n, imm_sel_p;
+  imm_t imm_sel; //imm_sel_p;
   alu_op_t alu_operator_n, alu_operator_p;
 
   // Decoder and ALU control
@@ -415,6 +548,23 @@ module micro_riscv(
       rs1_valid      = 1'b0;
       rs2_valid      = 1'b0;
     end
+    //flush ID/EX stage if PC_src is 1)
+    if (PC_src) begin
+    alu_operator_n   = ALU_ADD;
+    imm_sel        = IMM_I;
+    alu_src_n        = 1'b0;
+    alu_is_branch_n  = 1'b0;
+    alu_is_jump_n    = 1'b0;
+    alu_mem_read_n   = 1'b0;
+    alu_mem_write_n  = 1'b0;
+    alu_reg_write_n  = 1'b0;
+    mem_to_reg_n     = 1'b0;
+    alu_pc_reg_src_n = 1'b0;
+    illegal_insn   = 1'b0;
+    cpu_halt_n       = 1'b0;
+    rs1_valid      = 1'b0;
+    rs2_valid      = 1'b0;
+    end
   end
   //END OF DECODE
 
@@ -445,42 +595,42 @@ module micro_riscv(
 
   // ALU
   logic signed [31:0] alu_data_2;
-  logic signed [31:0] alu_result;
+  //logic signed [31:0] alu_result;
   logic alu_branch_o;
 
   // Select sign-extended immediate from insruction or register value 2 as ALU input
-  assign alu_data_2 = alu_src_p? alu_imm_p : reg_data_2_p;
+  assign alu_data_2 = alu_src_p? alu_imm_p : reg_data_2_ex_n;
 
   alu alu_i (
-    .alu_rs1_i    (reg_data_1_p),
+    .alu_rs1_i    (reg_data_1_ex),
     .alu_rs2_i    (alu_data_2),
     .alu_op_i     (alu_operator_p),
     .alu_branch_o (alu_branch_o),
-    .alu_result_o (alu_result)
+    .alu_result_o (alu_result_n)
   );
 
 
   // Compute PC from instruction. Source is either the current PC (direct jump)
   // or a register (indirect jump)
-  logic [31:0] PC_alu;
-  assign PC_alu = (alu_pc_reg_src_p? reg_data_1_p : PC_id_p) + alu_imm_p;
+
+  assign PC_alu_n = (alu_pc_reg_src_p? reg_data_1_ex : PC_id_p) + alu_imm_p;
 
   // Determine PC source based on instruction and branch result
-  assign PC_src = (alu_branch_o & alu_is_branch_p) |  // Conditional branch taken
-                   alu_is_jump_p;                     // Unconditional jump
+  assign PC_src = (alu_branch_o_p & alu_is_branch_ex_p) |  // Conditional branch taken
+                   alu_is_jump_ex_p;                     // Unconditional jump
 
   // Data memory interface
-  assign cpu_data_addr_o  = alu_result;
-  assign cpu_data_wdata_o = reg_data_2_p;
-  assign cpu_data_re_o    = alu_mem_read_p;
-  assign cpu_data_we_o    = alu_mem_write_p;
+  assign cpu_data_addr_o  = alu_result_p;
+  assign cpu_data_wdata_o = reg_data_2_ex_p;
+  assign cpu_data_re_o    = alu_mem_read_ex_p;
+  assign cpu_data_we_o    = alu_mem_write_ex_p;
 
   // Write-back data to the register file
   always_comb begin
-    reg_write_data = alu_result;
-    priority casez ({mem_to_reg_p, alu_is_jump_p})
-      2'b?1: reg_write_data = PC_id_incr;
-      2'b0?: reg_write_data = alu_result;
+    reg_write_data = alu_result_p;
+    priority casez ({mem_to_reg_ex_p, alu_is_jump_ex_p})
+      2'b?1: reg_write_data = PC_ex_incr;
+      2'b0?: reg_write_data = alu_result_p;
       2'b1?: reg_write_data = cpu_data_rdata_i;
     endcase
   end
