@@ -10,8 +10,105 @@ size_t t0, t1, t2, t3, t4, t5, t6;  // temporaries
 size_t s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11;
 //-----------------------------------------------------------------------------
 
-void qsort() // void qsort(int* A, int l, int r)
+void swap()
 {
+    //*x = a0, *y = a1
+
+    //prolouge
+    size_t stack_s1 = s1; //tmp
+
+    *(int*)s1 = *(int*)a0;
+    *(int*)a0 = *(int*)a1;
+    *(int*)a1 = *(int*)s1;
+
+    //epilouge
+    s1 = stack_s1;
+    return;
+}
+
+void partition ()
+{
+    //*A = a0, l = a1, r = a2  
+
+    //prolouge
+    size_t stack_s1 = s1; //pivot
+    size_t stack_s2 = s2; //i
+    size_t stack_s3 = s3; //j
+
+    t0 = a2 << 2; //*4 
+    t0 = a0 + t0; //A[r] element in array
+    t1 = s3 << 2; //*4 
+    t1 = a0 + t1; //A[j] element in array
+
+    //t2 = *(int*)(t0); //Value of r element
+    //t3 = *(int*)(t1); //Value of j element
+    
+    s1 = t0; //pivot = A[r]
+    s2 = a1 - 1; //i = l-1
+    s3 = a1; //j = l
+
+    before_partition_loop:
+      if ((int)s3 >= (int)a2) //for j<r
+        goto after_partition_loop;
+
+      s3 = s3 + 1; //j++
+      
+      if ((int)t0 >= (int)s1) //if A[j] < pivot
+        goto after_partition_if;
+       
+      s2 = s2 + 1; // i = i+1
+
+      //Prepare for swap function 
+      t0 = s2 << 2; //*4 
+      a0 = a0 + t0; //A[i]
+      t0 = s3 << 2; //*4
+      a1 = a0 + t0; //A[j]
+      swap();
+         
+    after_partition_if:
+      goto before_partition_loop;
+    after_partition_loop:
+
+      s2 = s2 + 1; //i+1
+
+      //Prepare for swap function
+      t2 = s2 << 2; //*4
+      a0 = a0 + t2; //A[i]
+      t2 = a2 << 2; //
+      a1 = a0 + t2; //A[r]
+      swap();
+
+      a0 = s2; //Return i 
+
+      //epilogue
+      s1 = stack_s1;
+      s2 = stack_s2;
+      s3 = stack_s3;
+      return;
+}
+
+void qsort()
+{
+   //*A = a0; l = a1, r = a2 
+
+   //epil
+   size_t stack_s1 = s1; //k
+
+   if (a2 >= a1)
+     goto after_qsort_if;
+
+   partition();
+   s1 = a0; //k = partition() = i
+   a2 = s1 - 1; //k-1
+   qsort();
+   a1 = s1 + 1; //k+1
+   qsort();
+
+   after_qsort_if:
+
+   //prol
+   s1 = stack_s1;
+   return;   
 }
 
 void input(void)
