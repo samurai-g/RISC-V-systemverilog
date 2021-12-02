@@ -17,9 +17,9 @@ void swap()
     //prolouge
     //size_t stack_s1 = (int)s1; //tmp
 
-           t5 = (int*)a0; //tmp = *x
-    *(int*)a0 = (int*)a1; // *x = *y
-    *(int*)a1 = (int)t5;  // *y = tmp
+           t6 = *(int*)a0; //tmp = *x
+    *(int*)a0 = *(int*)a1; // *x = *y
+    *(int*)a1 = (int)t6;  // *y = tmp
 
     //epilouge
     //s1 = stack_s1;
@@ -34,11 +34,12 @@ void partition ()
     size_t stack_s1 = s1; //pivot
     size_t stack_s2 = s2; //i
     size_t stack_s3 = s3; //j
-
+    
     t0 = a2 << 2; //*4 
-    t0 = a0 + t0; //Pointer to A[r] element in array
+    t0 = a0 + t0; //A[r]
     t1 = s3 << 2; //*4 
-    t1 = a0 + t1; //Pointer to A[j] element in array
+    t1 = a0 + t1; //A[j]
+    
 
     //t2 = *(int*)(t0); //Value of r element
     //t3 = *(int*)(t1); //Value of j element
@@ -53,7 +54,7 @@ void partition ()
 
       s3 = s3 + 1; //j++
       
-      if ((int)t0 >= (int)s1) //if A[j] < pivot
+      if (*(int*)t1 >= (int)s1) //if A[j] < pivot
         goto after_partition_if;
        
       s2 = s2 + 1; // i = i+1
@@ -61,8 +62,8 @@ void partition ()
       //Prepare for swap function 
       t2 = s2 << 2; //*4 
       a0 = a0 + t2; //A[i]
-      t1 = s3 << 2; //*4
-      a1 = a0 + t1; //A[j]
+      t3 = s3 << 2; //*4
+      a1 = a0 + t3; //A[j]
       swap();
          
     after_partition_if:
@@ -72,10 +73,10 @@ void partition ()
       s2 = s2 + 1; //i+1
 
       //Prepare for swap function
-      t2 = s2 << 2; //*4
-      a0 = a0 + t2; //A[i]
-      t0 = a2 << 2; //*4
-      a1 = a0 + t0; //A[r]
+      t4 = s2 << 2; //*4
+      a0 = a0 + t4; //A[i]
+      t5 = a2 << 2; //*4
+      a1 = a0 + t5; //A[r]
       swap();
 
       a0 = s2; //Return i 
@@ -92,22 +93,32 @@ void qsort()
    //*A = a0; l = a1, r = a2 
 
    //epil
-   size_t stack_s1 = s1; //k
+   size_t stack_s4 = s4; //k
+
+   s9 = a0; //A
+   s10 = a1; //l
+   s11 = a2; //r
 
    if (a2 >= a1) //l < r same as r >= l
      goto after_qsort_if;
 
    partition();
-   s1 = a0; //k = partition() = i
-   a2 = s1 - 1; //k-1
+   s4 = a0; //k = partition() = i
+
+   a0 = s9;     //A
+   a1 = s10;    //l
+   a2 = s4 - 1; //k-1
    qsort();
-   a1 = s1 + 1; //k+1
+
+   a0 = s9;     //A
+   a1 = s4 + 1; //k+1
+   a2 = s11;    //r
    qsort();
 
    after_qsort_if:
 
    //prol
-   s1 = stack_s1;
+   s4 = stack_s4;
    return;   
 }
 
