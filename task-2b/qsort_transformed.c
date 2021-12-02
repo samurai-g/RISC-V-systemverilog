@@ -15,14 +15,14 @@ void swap()
     //*x = a0, *y = a1
 
     //prolouge
-    size_t stack_s1 = s1; //tmp
+    //size_t stack_s1 = (int)s1; //tmp
 
-    *(int*)s1 = *(int*)a0;
-    *(int*)a0 = *(int*)a1;
-    *(int*)a1 = *(int*)s1;
+           t5 = (int*)a0; //tmp = *x
+    *(int*)a0 = (int*)a1; // *x = *y
+    *(int*)a1 = (int)t5;  // *y = tmp
 
     //epilouge
-    s1 = stack_s1;
+    //s1 = stack_s1;
     return;
 }
 
@@ -36,9 +36,9 @@ void partition ()
     size_t stack_s3 = s3; //j
 
     t0 = a2 << 2; //*4 
-    t0 = a0 + t0; //A[r] element in array
+    t0 = a0 + t0; //Pointer to A[r] element in array
     t1 = s3 << 2; //*4 
-    t1 = a0 + t1; //A[j] element in array
+    t1 = a0 + t1; //Pointer to A[j] element in array
 
     //t2 = *(int*)(t0); //Value of r element
     //t3 = *(int*)(t1); //Value of j element
@@ -59,10 +59,10 @@ void partition ()
       s2 = s2 + 1; // i = i+1
 
       //Prepare for swap function 
-      t0 = s2 << 2; //*4 
-      a0 = a0 + t0; //A[i]
-      t0 = s3 << 2; //*4
-      a1 = a0 + t0; //A[j]
+      t2 = s2 << 2; //*4 
+      a0 = a0 + t2; //A[i]
+      t1 = s3 << 2; //*4
+      a1 = a0 + t1; //A[j]
       swap();
          
     after_partition_if:
@@ -74,8 +74,8 @@ void partition ()
       //Prepare for swap function
       t2 = s2 << 2; //*4
       a0 = a0 + t2; //A[i]
-      t2 = a2 << 2; //
-      a1 = a0 + t2; //A[r]
+      t0 = a2 << 2; //*4
+      a1 = a0 + t0; //A[r]
       swap();
 
       a0 = s2; //Return i 
@@ -94,7 +94,7 @@ void qsort()
    //epil
    size_t stack_s1 = s1; //k
 
-   if (a2 >= a1)
+   if (a2 >= a1) //l < r same as r >= l
      goto after_qsort_if;
 
    partition();
